@@ -645,16 +645,16 @@ EndFunc   ;==>DebugPrintAllModules
 ;                       READ AND UPDATE GUI FROM MEMORY
 ; ------------------------------------------------------------------------------
 Func GUIReadMemory()
-	If $hProcess = 0 Or $PosXAddress = 0 Then Return
+    If $hProcess = 0 Or $PosXAddress = 0 Then Return
 
-	; Read X position from memory
-	Local $x = _ReadMemory($hProcess, $PosXAddress, "int")
-	If Not @error Then
-		GUICtrlSetData($lblPosX, "X: " & $x)
-	EndIf
+    ; Read X position from memory
+    Local $x = _ReadMemory($hProcess, $PosXAddress, "int")
+    If Not @error Then
+        GUICtrlSetData($lblPosX, "X: " & $x)
+    EndIf
 
-	; TODO: Add Y, HP, etc. later here too
-EndFunc   ;==>GUIReadMemory
+    ; TODO: Add Y, HP, etc. later here too
+EndFunc
 
 Func _ReadMemory($hProc, $pAddress)
 	If $hProc = 0 Or $pAddress = 0 Then Return 0

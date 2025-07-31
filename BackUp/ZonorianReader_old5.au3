@@ -25,7 +25,6 @@
 #include <Array.au3> ; For _ArraySearch
 #include <Misc.au3>
 
-
 Global $bHotkeyDown = False
 ; ---------------------------------------------------------------------------------
 ; 1) Define fallback constants for Lock/Unlock if your AutoIt version doesn't have them
@@ -78,9 +77,8 @@ Global $LootClickQueueSize = 0
 
 
 ; Define the game process and memory offsets
-Global $ProcessName = "zonorian.exe"
+Global $ProcessName = "java.exe"
 Global $WindowName = "Zonorian"
-Global $JavaBase = GetModuleBase($ProcessName, "zonorian.exe")
 Global $TypeOffset = 0xBF91C8        ;  ---- ; 0=Player, 1=Monster, etc
 Global $AttackModeOffset = 0xB6D458  ; ----
 ;Global $PosXOffset = 0xBFBE68        ; ----
@@ -578,68 +576,46 @@ EndFunc   ;==>CreateButtonDefaultConfig
 ;   Function to Open Process & Retrieve Base Address
 ; ------------------------------------------------------------------------------
 Func ConnectToBaseAddress()
-	Global $hProcess, $BaseAddress, $PosXAddress
+    Global $hProcess, $BaseAddress, $PosXAddress
 
-	; Get process ID
-	Local $ProcessID = ProcessExists($ProcessName)
-	If $ProcessID = 0 Then
-		ConsoleWrite("[Reconnect] Game process not found." & @CRLF)
-		Return SetError(1)
-	EndIf
+    ; Get process ID
+    Local $ProcessID = ProcessExists($ProcessName)
+    If $ProcessID = 0 Then
+        ConsoleWrite("[Reconnect] Game process not found." & @CRLF)
+        Return SetError(1)
+    EndIf
 
-	; Open process handle
-	$hProcess = _WinAPI_OpenProcess(0x1F0FFF, False, $ProcessID)
-	If $hProcess = 0 Then
-		ConsoleWrite("[Reconnect] Failed to open process! Try running as admin." & @CRLF)
-		Return SetError(2)
-	EndIf
+    ; Open process handle
+    $hProcess = _WinAPI_OpenProcess(0x1F0FFF, False, $ProcessID)
+    If $hProcess = 0 Then
+        ConsoleWrite("[Reconnect] Failed to open process! Try running as admin." & @CRLF)
+        Return SetError(2)
+    EndIf
 
-	; Optional: get main module base
-	$BaseAddress = _GetModuleBase_EnumModules($hProcess)
+    ; Optional: get main module base
+    $BaseAddress = _GetModuleBase_EnumModules($hProcess)
 
-	; Get java.exe base (Zonorian bundles jvm inside java.exe)
-	Local $JavaBase = GetModuleBase($ProcessName, "java.exe")
-	If $JavaBase = 0 Then
-		ConsoleWrite("[Error] java.exe base not found!" & @CRLF)
-		_WinAPI_CloseHandle($hProcess)
-		$hProcess = 0
-		Return SetError(3)
-	EndIf
+    ; Get java.exe base (Zonorian bundles jvm inside java.exe)
+    Local $JavaBase = GetModuleBase($ProcessName, "java.exe")
+    If $JavaBase = 0 Then
+        ConsoleWrite("[Error] java.exe base not found!" & @CRLF)
+        _WinAPI_CloseHandle($hProcess)
+        $hProcess = 0
+        Return SetError(3)
+    EndIf
 
-	; Resolve PosX address using pointer path
-	$PosXAddress = ResolvePointer($hProcess, $JavaBase + $PosXBaseOffset, $PosXOffsets)
-	If $PosXAddress = 0 Then
-		ConsoleWrite("[Error] Failed to resolve X position pointer!" & @CRLF)
-		_WinAPI_CloseHandle($hProcess)
-		$hProcess = 0
-		Return SetError(4)
-	EndIf
+    ; Resolve PosX address using pointer path
+    $PosXAddress = ResolvePointer($hProcess, $JavaBase + $PosXBaseOffset, $PosXOffsets)
+    If $PosXAddress = 0 Then
+        ConsoleWrite("[Error] Failed to resolve X position pointer!" & @CRLF)
+        _WinAPI_CloseHandle($hProcess)
+        $hProcess = 0
+        Return SetError(4)
+    EndIf
 
-	ConsoleWrite("[Reconnect] PosX resolved: 0x" & Hex($PosXAddress) & @CRLF)
-	Return 1
-EndFunc   ;==>ConnectToBaseAddress
-
-
-Func DebugPrintAllModules()
-	Local $pid = ProcessExists($ProcessName)
-	If $pid = 0 Then Return
-
-	Local $hSnapshot = DllCall("kernel32.dll", "handle", "CreateToolhelp32Snapshot", "dword", 0x00000008, "dword", $pid)
-	If @error Or $hSnapshot[0] = -1 Then Return
-
-	Local $me32 = DllStructCreate("dword Size;ptr ModBaseAddr;dword ModBaseSize;dword Usage;char ModuleName[256];char ExePath[260]")
-	DllStructSetData($me32, "Size", DllStructGetSize($me32))
-
-	Local $success = DllCall("kernel32.dll", "bool", "Module32First", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
-	While Not @error And $success[0]
-		Local $modName = DllStructGetData($me32, "ModuleName")
-		Local $exePath = DllStructGetData($me32, "ExePath")
-		ConsoleWrite("[MODULE] " & $modName & " @ " & $exePath & @CRLF)
-		$success = DllCall("kernel32.dll", "bool", "Module32Next", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
-	WEnd
-
-	DllCall("kernel32.dll", "bool", "CloseHandle", "handle", $hSnapshot[0])
-EndFunc   ;==>DebugPrintAllModules
+    ConsoleWrite("[Reconnect] PosX resolved: 0x" & Hex($PosXAddress) & @CRLF)
+    Return 1
+EndFunc
 
 ; ------------------------------------------------------------------------------
 ;                       READ AND UPDATE GUI FROM MEMORY
@@ -647,13 +623,10 @@ EndFunc   ;==>DebugPrintAllModules
 Func GUIReadMemory()
 	If $hProcess = 0 Or $PosXAddress = 0 Then Return
 
-	; Read X position from memory
-	Local $x = _ReadMemory($hProcess, $PosXAddress, "int")
-	If Not @error Then
-		GUICtrlSetData($lblPosX, "X: " & $x)
-	EndIf
+	Local $x = _ReadMemory($hProcess, $PosXAddress)
+	If @error Or $x = 0 Then Return
 
-	; TODO: Add Y, HP, etc. later here too
+	GUICtrlSetData($xLabel, "X: " & $x)
 EndFunc   ;==>GUIReadMemory
 
 Func _ReadMemory($hProc, $pAddress)
@@ -692,7 +665,7 @@ Func _GetModuleBase_EnumModules($hProc)
 	Return $pBaseAddress
 EndFunc   ;==>_GetModuleBase_EnumModules
 
-Func GetModuleBase($procName, $partialName)
+Func GetModuleBase($procName, $moduleName)
 	Local $pid = ProcessExists($procName)
 	If $pid = 0 Then Return 0
 
@@ -706,9 +679,7 @@ Func GetModuleBase($procName, $partialName)
 	Local $success = DllCall("kernel32.dll", "bool", "Module32First", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
 	While Not @error And $success[0]
 		Local $modName = StringLower(DllStructGetData($me32, "ModuleName"))
-		Local $partial = StringLower($partialName)
-
-		If StringInStr($modName, $partial) Then
+		If StringInStr($modName, StringLower($moduleName)) Then
 			$found = Ptr(DllStructGetData($me32, "ModBaseAddr"))
 			ExitLoop
 		EndIf
