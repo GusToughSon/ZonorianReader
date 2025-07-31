@@ -576,57 +576,158 @@ EndFunc   ;==>CreateButtonDefaultConfig
 ;   Function to Open Process & Retrieve Base Address
 ; ------------------------------------------------------------------------------
 Func ConnectToBaseAddress()
-	Global $hProcess, $BaseAddress, $PosXAddress
+    Global $hProcess, $BaseAddress, $PosXAddress
 
-	; Get process ID
-	Local $ProcessID = ProcessExists($ProcessName)
-	If $ProcessID = 0 Then
-		ConsoleWrite("[Reconnect] Game process not found." & @CRLF)
-		Return SetError(1)
-	EndIf
+    ; Get process ID
+    Local $ProcessID = ProcessExists($ProcessName)
+    If $ProcessID = 0 Then
+        ConsoleWrite("[Reconnect] Game process not found." & @CRLF)
+        Return SetError(1)
+    EndIf
 
-	; Open process handle
-	$hProcess = _WinAPI_OpenProcess(0x1F0FFF, False, $ProcessID)
-	If $hProcess = 0 Then
-		ConsoleWrite("[Reconnect] Failed to open process! Try running as admin." & @CRLF)
-		Return SetError(2)
-	EndIf
+    ; Open process handle
+    $hProcess = _WinAPI_OpenProcess(0x1F0FFF, False, $ProcessID)
+    If $hProcess = 0 Then
+        ConsoleWrite("[Reconnect] Failed to open process! Try running as admin." & @CRLF)
+        Return SetError(2)
+    EndIf
 
-	; Optional: get main module base
-	$BaseAddress = _GetModuleBase_EnumModules($hProcess)
+    ; Optionally get main base (not used anymore unless you want it for other stuff)
+    $BaseAddress = _GetModuleBase_EnumModules($hProcess)
 
-	; Get jvm.dll base
-	Local $jvmBase = GetModuleBase($ProcessName, "jvm.dll")
-	If $jvmBase = 0 Then
-		ConsoleWrite("[Error] jvm.dll base not found!" & @CRLF)
-		_WinAPI_CloseHandle($hProcess)
-		$hProcess = 0
-		Return SetError(3)
-	EndIf
+    ; Get jvm.dll base
+    Local $jvmBase = GetModuleBase($ProcessName, "jvm.dll")
+    If $jvmBase = 0 Then
+        ConsoleWrite("[Error] jvm.dll base not found!" & @CRLF)
+        _WinAPI_CloseHandle($hProcess)
+        $hProcess = 0
+        Return SetError(3)
+    EndIf
 
-	; Resolve X pointer
-	$PosXAddress = ResolvePointer($hProcess, $jvmBase + $PosXBaseOffset, $PosXOffsets)
-	If $PosXAddress = 0 Then
-		ConsoleWrite("[Error] Failed to resolve X position pointer!" & @CRLF)
-		_WinAPI_CloseHandle($hProcess)
-		$hProcess = 0
-		Return SetError(4)
-	EndIf
+    ; Resolve PosX address using the pointer chain
+    $PosXAddress = ResolvePointer($hProcess, $jvmBase + $PosXBaseOffset, $PosXOffsets)
+    If $PosXAddress = 0 Then
+        ConsoleWrite("[Error] Failed to resolve X position pointer!" & @CRLF)
+        _WinAPI_CloseHandle($hProcess)
+        $hProcess = 0
+        Return SetError(4)
+    EndIf
 
-	ConsoleWrite("[Reconnect] PosX resolved: 0x" & Hex($PosXAddress) & @CRLF)
-	Return 1
+    ConsoleWrite("[Reconnect] Successfully resolved PosXAddress = 0x" & Hex($PosXAddress) & @CRLF)
+    Return 1
 EndFunc   ;==>ConnectToBaseAddress
 
 ; ------------------------------------------------------------------------------
 ;                       READ AND UPDATE GUI FROM MEMORY
 ; ------------------------------------------------------------------------------
 Func GUIReadMemory()
-	If $hProcess = 0 Or $PosXAddress = 0 Then Return
+	Global $hProcess
+	Global $Type, $TypeAddress
+	Global $WalkerLabel, $MoveToLocationsStatus
+	Global $AttackMode, $AttackModeAddress
+	Global $PosXAddress, $PosYAddress
+	Global $HPAddress, $MaxHPAddress
+	Global $ChattOpenAddress, $Chat
+	Global $SicknessAddress, $Sickness
+	Global $BackPack, $BackPackMax
+	Global $BackPackAddress, $BackPackMaxAddress
+	Global $HealerStatus, $CureStatus, $TargetStatus
+	Global $HealerLabel, $CureLabel, $TargetLabel
+	Global $LootQueued, $LootCount, $LootReady, $LootIdleWaiting
 
-	Local $x = _ReadMemory($hProcess, $PosXAddress)
-	If @error Or $x = 0 Then Return
+	If $hProcess = 0 Then Return
 
-	GUICtrlSetData($xLabel, "X: " & $x)
+	; Read Type
+	$Type = _ReadMemory($hProcess, $TypeAddress)
+	If $Type = 0 Then
+		GUICtrlSetData($TypeLabel, "Type: Player")
+	ElseIf $Type = 1 Then
+		GUICtrlSetData($TypeLabel, "Type: Monster")
+	ElseIf $Type = 2 Then
+		GUICtrlSetData($TypeLabel, "Type: NPC")
+	ElseIf $Type = 65535 Then
+		GUICtrlSetData($TypeLabel, "Type: No Target")
+	Else
+		GUICtrlSetData($TypeLabel, "Type: Unknown (" & $Type & ")")
+	EndIf
+
+	; Walker On/Off or Paused
+	Switch $MoveToLocationsStatus
+		Case 0
+			GUICtrlSetData($WalkerLabel, "Walker: Off")
+		Case 1
+			GUICtrlSetData($WalkerLabel, "Walker: On")
+		Case 2
+			GUICtrlSetData($WalkerLabel, "Walker: Paused")
+		Case Else
+			GUICtrlSetData($WalkerLabel, "Walker: Error")
+	EndSwitch
+
+	; Attack Mode
+	$AttackMode = _ReadMemory($hProcess, $AttackModeAddress)
+	If $AttackMode = 0 Then
+		GUICtrlSetData($AttackModeLabel, "Attack Mode: Safe")
+	ElseIf $AttackMode = 1 Then
+		GUICtrlSetData($AttackModeLabel, "Attack Mode: Attack")
+	Else
+		GUICtrlSetData($AttackModeLabel, "Attack Mode: No Target")
+	EndIf
+
+	; Position
+	Local $PosX = _ReadMemory($hProcess, $PosXAddress)
+	Local $PosY = _ReadMemory($hProcess, $PosYAddress)
+	GUICtrlSetData($PosXLabel, "Pos X: " & $PosX)
+	GUICtrlSetData($PosYLabel, "Pos Y: " & $PosY)
+
+	; HP
+	Local $HP = _ReadMemory($hProcess, $HPAddress)
+	GUICtrlSetData($HPLabel, "HP: " & $HP)
+	GUICtrlSetData($HP2Label, "RealHp: " & ($HP / 65536))
+
+	; MaxHP
+	Local $MaxHP = _ReadMemory($hProcess, $MaxHPAddress)
+	GUICtrlSetData($MaxHPLabel, "MaxHP: " & $MaxHP)
+
+	; Chat
+	Local $ChatVal = _ReadMemory($hProcess, $ChattOpenAddress)
+	$Chat = $ChatVal
+	GUICtrlSetData($ChatLabel, "Chat: " & $ChatVal)
+
+	; Sickness
+	Local $SickVal = _ReadMemory($hProcess, $SicknessAddress)
+	$Sickness = $SickVal
+	Local $SicknessDescription = GetSicknessDescription($SickVal)
+	GUICtrlSetData($SicknessLabel, "Sickness: " & $SicknessDescription)
+
+	; Backpack Weight
+	Local $bpWeight = _ReadMemory($hProcess, $BackPackAddress)
+	Local $bpMax = _ReadMemory($hProcess, $BackPackMaxAddress)
+	GUICtrlSetData($BackPackLabel, "Weight " & $bpWeight & " / " & $bpMax)
+
+	; --- Death Detection via sudden teleport ---
+	Static $lastX = -1, $lastY = -1
+	If $lastX <> -1 And $lastY <> -1 Then
+		Local $dx = Abs($PosX - $lastX)
+		Local $dy = Abs($PosY - $lastY)
+		If $dx > 25 Or $dy > 25 Then
+			ConsoleWrite("[DeathDetect] Large movement detected: ΔX=" & $dx & ", ΔY=" & $dy & ". Assuming death." & @CRLF)
+
+			; Turn off walker
+			If $MoveToLocationsStatus <> 0 Then
+				$MoveToLocationsStatus = 0
+				GUICtrlSetData($WalkerLabel, "Walker: Off")
+				ConsoleWrite("[DeathDetect] Walker turned OFF." & @CRLF)
+			EndIf
+
+			; Clear loot status
+			$LootQueued = False
+			$LootCount = 0
+			$LootReady = False
+			$LootIdleWaiting = False
+		EndIf
+	EndIf
+	$lastX = $PosX
+	$lastY = $PosY
 EndFunc   ;==>GUIReadMemory
 
 Func _ReadMemory($hProc, $pAddress)
@@ -666,29 +767,27 @@ Func _GetModuleBase_EnumModules($hProc)
 EndFunc   ;==>_GetModuleBase_EnumModules
 
 Func GetModuleBase($procName, $moduleName)
-	Local $pid = ProcessExists($procName)
-	If $pid = 0 Then Return 0
+    Local $snap = DllCall("kernel32.dll", "handle", "CreateToolhelp32Snapshot", "dword", 0x00000008, "dword", ProcessExists($procName))
+    If @error Or $snap[0] = -1 Then Return 0
 
-	Local $hSnapshot = DllCall("kernel32.dll", "handle", "CreateToolhelp32Snapshot", "dword", 0x00000008, "dword", $pid)
-	If @error Or $hSnapshot[0] = -1 Then Return 0
+    Local $me32 = DllStructCreate("dword Size;ptr Module;dword SizeModule;dword Usage;ptr ModuleName;ptr ExePath;byte[512]", 1)
+    DllStructSetData($me32, 1, DllStructGetSize($me32))
 
-	Local $me32 = DllStructCreate("dword Size;ptr ModBaseAddr;dword ModBaseSize;dword Usage;char ModuleName[256];char ExePath[260]")
-	DllStructSetData($me32, "Size", DllStructGetSize($me32))
+    Local $found = 0
+    Local $success = DllCall("kernel32.dll", "bool", "Module32First", "handle", $snap[0], "ptr", DllStructGetPtr($me32))
 
-	Local $found = 0
-	Local $success = DllCall("kernel32.dll", "bool", "Module32First", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
-	While Not @error And $success[0]
-		Local $modName = StringLower(DllStructGetData($me32, "ModuleName"))
-		If StringInStr($modName, StringLower($moduleName)) Then
-			$found = Ptr(DllStructGetData($me32, "ModBaseAddr"))
-			ExitLoop
-		EndIf
-		$success = DllCall("kernel32.dll", "bool", "Module32Next", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
-	WEnd
+    While Not @error And $success[0]
+        Local $modName = StringLower(DllStructGetData($me32, 5))
+        If StringInStr($modName, StringLower($moduleName)) Then
+            $found = DllStructGetData($me32, 2)
+            ExitLoop
+        EndIf
+        $success = DllCall("kernel32.dll", "bool", "Module32Next", "handle", $snap[0], "ptr", DllStructGetPtr($me32))
+    WEnd
 
-	DllCall("kernel32.dll", "bool", "CloseHandle", "handle", $hSnapshot[0])
-	Return $found
-EndFunc   ;==>GetModuleBase
+    DllCall("kernel32.dll", "bool", "CloseHandle", "handle", $snap[0])
+    Return $found
+EndFunc
 
 
 Func ChangeAddressToBase()
@@ -1082,15 +1181,6 @@ Func MoveToLocationsStep($aLocations, ByRef $iCurrentIndex)
 	Return True
 EndFunc   ;==>MoveToLocationsStep
 
-Func ResolvePointer($hProc, $base, $offsets)
-	Local $addr = $base
-	For $i = 0 To UBound($offsets) - 1
-		$addr = _ReadMemory($hProc, $addr)
-		If $addr = 0 Then Return 0
-		$addr += $offsets[$i]
-	Next
-	Return $addr
-EndFunc   ;==>ResolvePointer
 
 
 Func FindClosestLocationIndex($currentX, $currentY, $aLocations)

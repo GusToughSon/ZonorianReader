@@ -621,13 +621,13 @@ EndFunc   ;==>ConnectToBaseAddress
 ;                       READ AND UPDATE GUI FROM MEMORY
 ; ------------------------------------------------------------------------------
 Func GUIReadMemory()
-	If $hProcess = 0 Or $PosXAddress = 0 Then Return
+    If $hProcess = 0 Or $PosXAddress = 0 Then Return
 
-	Local $x = _ReadMemory($hProcess, $PosXAddress)
-	If @error Or $x = 0 Then Return
+    Local $x = _ReadMemory($hProcess, $PosXAddress)
+    If @error Or $x = 0 Then Return
 
-	GUICtrlSetData($xLabel, "X: " & $x)
-EndFunc   ;==>GUIReadMemory
+    GUICtrlSetData($xLabel, "X: " & $x)
+EndFunc
 
 Func _ReadMemory($hProc, $pAddress)
 	If $hProc = 0 Or $pAddress = 0 Then Return 0
@@ -666,29 +666,29 @@ Func _GetModuleBase_EnumModules($hProc)
 EndFunc   ;==>_GetModuleBase_EnumModules
 
 Func GetModuleBase($procName, $moduleName)
-	Local $pid = ProcessExists($procName)
-	If $pid = 0 Then Return 0
+    Local $pid = ProcessExists($procName)
+    If $pid = 0 Then Return 0
 
-	Local $hSnapshot = DllCall("kernel32.dll", "handle", "CreateToolhelp32Snapshot", "dword", 0x00000008, "dword", $pid)
-	If @error Or $hSnapshot[0] = -1 Then Return 0
+    Local $hSnapshot = DllCall("kernel32.dll", "handle", "CreateToolhelp32Snapshot", "dword", 0x00000008, "dword", $pid)
+    If @error Or $hSnapshot[0] = -1 Then Return 0
 
-	Local $me32 = DllStructCreate("dword Size;ptr ModBaseAddr;dword ModBaseSize;dword Usage;char ModuleName[256];char ExePath[260]")
-	DllStructSetData($me32, "Size", DllStructGetSize($me32))
+    Local $me32 = DllStructCreate("dword Size;ptr ModBaseAddr;dword ModBaseSize;dword Usage;char ModuleName[256];char ExePath[260]")
+    DllStructSetData($me32, "Size", DllStructGetSize($me32))
 
-	Local $found = 0
-	Local $success = DllCall("kernel32.dll", "bool", "Module32First", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
-	While Not @error And $success[0]
-		Local $modName = StringLower(DllStructGetData($me32, "ModuleName"))
-		If StringInStr($modName, StringLower($moduleName)) Then
-			$found = Ptr(DllStructGetData($me32, "ModBaseAddr"))
-			ExitLoop
-		EndIf
-		$success = DllCall("kernel32.dll", "bool", "Module32Next", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
-	WEnd
+    Local $found = 0
+    Local $success = DllCall("kernel32.dll", "bool", "Module32First", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
+    While Not @error And $success[0]
+        Local $modName = StringLower(DllStructGetData($me32, "ModuleName"))
+        If StringInStr($modName, StringLower($moduleName)) Then
+            $found = Ptr(DllStructGetData($me32, "ModBaseAddr"))
+            ExitLoop
+        EndIf
+        $success = DllCall("kernel32.dll", "bool", "Module32Next", "handle", $hSnapshot[0], "ptr", DllStructGetPtr($me32))
+    WEnd
 
-	DllCall("kernel32.dll", "bool", "CloseHandle", "handle", $hSnapshot[0])
-	Return $found
-EndFunc   ;==>GetModuleBase
+    DllCall("kernel32.dll", "bool", "CloseHandle", "handle", $hSnapshot[0])
+    Return $found
+EndFunc
 
 
 Func ChangeAddressToBase()
